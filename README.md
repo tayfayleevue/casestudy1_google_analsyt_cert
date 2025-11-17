@@ -1,2 +1,2 @@
-# casestudy1_google_analsyt_cert
+# casestudy1_google_analsyt_certificate
 Case Study 1 given by Google Data Analytics Certificate. We are working for a company named Cyclistic based in Chicago and tasked to see the trends between membership users and casual (one-time). The company's objective is to : Design marketing strategies aimed at converting casual riders into annual members.
