@@ -1,0 +1,234 @@
+---
+title: "Case Study 1 : Cyclistic Bike-Share Analysis"
+author: "Faith Vue"
+date: "2025-11-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Business Task (Statement)
+
+##### In this case study, I am working for a fictional company, "Cyclistic", to answer the business question "How do annual members and casual riders use Cyclistic bikes differently?". Our data is based in Chicago and is focused on whether users are members or casual users(one-time). We were given the following datasets by the Google certificate program, the source made available by Motivate International Inc. under this [license](https://divvybikes.com/data-license-agreement). 
+##### Our company's priority is increasing our memberships with cyclistic bikes by turning everyday users *not* subscribed to our services into full membership users. 
+##### We are expected to represent our findings to our director of marketing, our manager, the marketing analytics team, and the executive team (whom of which decides on approving the recommended marketing program). The director tasked me specifically to answer this question to help with our business task: "How do annual members and casual riders use Cyclistic bikes differently?"
+
+### Loading and Analyzing the Data
+##### Here I am calling packages dplyr, lubridate, and readr, then loading my datasets. 
+##### cyclistic_2019 is a dataset from Q1 of the year 2019, documenting all usertypes from the first quarter of that year. cyclistic_2020 is similar, but focuses on Q1 of the year 2020. Due to data privacy issues, we are prohibited from using personally identifiable information, meaning we won't be able to connect pass purchases to credit card numbers for casual riders who may have purchased multiple single passes. Some things I am looking to transform from the data: 
+* cyclistic_2020 does not have the tripduration and instead has starting and ending longitudes and latitudes. I will need to transform the given coordinates to find the total tripduration (distance in meters) for each observation. 
+* The dates are also preset to character type, but must be date type 
+* I will use the start and end times to create another column that has the entire time duration it took to complete their trip. 
+
+##### I will now load the readr package to process the dataset files, and dplyr package to manipulate and clean the data. In the next line of code, I document my process for cleaning the datasets. I also called the lubridate package to be able to convert column types. 
+
+```{r }
+library("readr")
+library("dplyr")
+library("lubridate")
+
+cyclistic_2019 <- read.csv("Divvy_Trips_2019_Q1.csv")
+cyclistic_2020 <- read.csv("Divvy_Trips_2020_Q1.csv")
+
+
+```
+
+
+```{r}
+total_na_2019 <- sum(is.na(cyclistic_2019))
+total_na_2019
+total_na_2020 <- sum(is.na(cyclistic_2020))
+total_na_2020
+```
+
+##### Down below I used the function colSums(is.na()) to return every column and the number of empty/na values in their columns. We can see in cyclistic_2019 null values originate from the column birthyear, which is a column we don't plan to work with. Thus, we can remove this column to get rid of all null values since it may lead to bias later on in our hypothesis. However, in cyclistic_2020, we can see we have one missing null value from "end_station_id", "end_lat", and "end_lng" columns. This missing data may all be from the same observation, so to determine this we will continue our investigation of the data. 
+
+```{r}
+colSums(is.na(cyclistic_2019))
+```
+
+```{r}
+colSums(is.na(cyclistic_2020))
+```
+
+##### Below, we can see that one row is returned when we search for row numbers that contain missing values. Because of this, we can infer that row 414427 contains the three missing observations, leaving us to believe that this observation lacks purpose in our dataset. To keep the original data, we will create a sub dataset where we remove this row. 
+
+```{r}
+which(!complete.cases(cyclistic_2020))
+```
+
+
+```{r}
+cyclistic_2020_clean <- na.omit(cyclistic_2020)
+
+cyclistic_2019_clean <- cyclistic_2019 %>%
+  select(-birthyear, -gender)
+```
+
+
+##### Now, we have removed the row missing three observations from the 2020 dataset, the "birthyear" column from the 2019 dataset, and the "gender" column since it will make working with the data easier. 
+
+### Data Cleaning and Manipulation
+##### Now that we've cleaned our data, we will 
+1. Create a new column "ride_length" that is calculated by subtracting the "started_at" column from "ended_at". Then we will format this new column as datetime HH:MM:ss
+2. Create a new column "day_of_week" and calculate the weekday using WEEKDAY command. Format this as General or as a number with no decimals (1=Sunday, 7=Saturday)
+3. Create a new column by converting the start lat, start long, end lat, and end long to find the tripduration in dataset cyclistic_2020_clean. To convert this, we will call geosphere package to be able to find the distance in meters from our given observations. We will remove the unnecessary observations to keep our data easy to work with.
+4. Change column types and names so they are the same for both dataframes. 
+5. Merge dataframes together, ensuring they have the same column names and types. 
+
+```{r}
+library(geosphere)
+
+cyclistic_2019_clean <- cyclistic_2019_clean %>%
+  mutate(
+    trip_id = as.character(trip_id),
+    tripduration = as.numeric(cyclistic_2019_clean$tripduration),
+    start_time = ymd_hms(start_time),
+    end_time = ymd_hms(end_time),
+    ride_length_sec = as.numeric(difftime(end_time, start_time, units = "secs")),
+    ride_length_hms = seconds_to_period(ride_length_sec),
+    day_of_week = wday(start_time, week_start = 7)) %>%
+  select(-bikeid) %>%
+  rename( ride_id = trip_id, 
+          start_station_id = from_station_id,
+          start_station_name = from_station_name,
+          end_station_id = to_station_id,
+          end_station_name = to_station_name)
+
+cyclistic_2020_clean <- cyclistic_2020_clean %>%
+  mutate(
+    start_time = ymd_hms(started_at),
+    end_time = ymd_hms(ended_at),
+    ride_length_sec = as.numeric(difftime(ended_at, started_at, units = "secs")),
+    ride_length_hms = seconds_to_period(ride_length_sec),
+    day_of_week = wday(started_at, week_start = 7),
+    tripduration = distHaversine(
+      cbind(start_lng, start_lat),  # starting coordinates
+      cbind(end_lng, end_lat)       # ending coordinates
+    )) %>%
+  select(-start_lat, -start_lng, -end_lat, -end_lng, -rideable_type, -started_at, -ended_at) %>%
+  rename( usertype = member_casual)
+
+```
+
+```{r}
+
+df_combined <- bind_rows(cyclistic_2019_clean, cyclistic_2020_clean)
+
+```
+
+##### Looking further into the data, I see we have four types of observations in the "usertype" column, but what we can infer from this is that the input names have change from the year 2019 and 2020. Because we wish to stay consistent with more recent inputs, we will change "cyclistic_2019_clean" inputs of "Subscriber" to "member" and "Customer" to "casual". 
+
+```{r}
+
+df_combined <- df_combined %>%
+  mutate(usertype = recode(usertype,
+                           "Subscriber" = "member",
+                           "Customer" = "casual"))
+
+```
+
+
+### Analysis
+
+##### Now that we have completed all data transformations and merged the data together, we will conduct our analysis. This explores how different types of riders use a bike-share service, focusing on usage patterns between members and casual riders. 
+
+```{r}
+dim(df_combined)  
+
+```
+
+##### Our data has a total of 12 columns and 791,955 observations total from Q1 of the year 2019 and Q1 of 2020. 
+
+```{r}
+names(df_combined) 
+```
+
+##### Here we see that our column names consist of ride_id, start_time (when trips began), end_time (when trips end), trip_duration (length of trips in meters), start_station_id, start_station_name, end_station_id, end_station_name, usertype (casual v. member user), ride_length_sec (ride length in seconds), ride_length_hms (ride length converted to hour, min, sec), and day of week (1 = Sunday through 7 = Saturday)
+
+```{r}
+
+str(df_combined)  
+```
+
+##### We are shown the column names and the data types they contain. This also shows the first few values of each column displayed. 
+
+```{r}
+summary(df_combined) 
+```
+
+##### The summary() function shows numeric data and categorical counts of the df. Here, we can see that 
+1. Total number of ride_ids, start_station_names, end_station_names, and usertypes are 791,955 total (total num of rows, meaning no missing values here)
+2. First ever *started* bike trip was on Jan 1st, 2019 at 12:04 am and the latest *started* was March 31st, 2020 at 11:51 pm. 
+3. First ever *ended* bike trip was on January 1st, 2019 at 12:11 am and latest *ended* was 8:10 pm.
+4. Smallest distance during a bike ride was 0 meters, and farthest was 23,122.3 meters. 
+5. We see that the smallest recorded ride_length_sec is somehow -552, which is not possible. **Need to investigate this**
+6. Longest ride took 123 days, 1 hour, 20 minutes and 22 seconds!
+
+##### Now that we have our numeric data summarized, we're gonna focus on the data that must be investigated : negative ride length in time! Time doesn't go below zero!
+##### These are explained to be system-generated "test-rides", maintenance moves, or logging errors that Cyclistic has in their datasets. Because of this, we will remove all of these observations from our analysis. 
+
+```{r}
+df_combined_clean <- df_combined %>% 
+  filter(ride_length_sec >= 0)
+
+```
+
+##### And now we will see what our actual shortest time duration bike ride was 0 seconds down below. 
+
+```{r}
+min_time_ride <- min(df_combined_clean$ride_length_hms)
+min_time_ride
+```
+
+
+##### From here, we want to find the number of casual v. member users. Below, you can see that we have **71,526** casual users and **720,313** member users. We see that we have more members than casual users, but there still is a large amount of casual users.
+
+```{r}
+
+table(df_combined_clean$usertype)
+
+```
+
+##### We can see here that the average ride length by usertype is :
+
+```{r}
+df_combined_clean %>%
+  group_by(usertype) %>%
+  summarise(
+    mean_length = mean(ride_length_sec),
+    median_length = median(ride_length_sec),
+    max_length = max(ride_length_sec)
+  )
+```
+
+##### Here I call ggplot2 so we can create graphs. Down in the next chunk of code I conduct the number of rides by day of week and plot it so you can see trends more clearly:
+
+```{r}
+library(ggplot2)
+df_combined_clean %>%
+  count(day_of_week, usertype)
+
+ggplot(df_combined_clean, aes(x= day_of_week, fill = usertype)) + geom_bar(position = "dodge") + labs(title = "Riders Per Day", x = "Days of Week (Sunday = 1, Saturday = 7)", y = "Total Number of Riders", subtitle = "Casual and Membership rider counts per day.") + scale_y_continuous(labels = scales::comma)
+```
+
+##### We can see that during the weekdays (2,3,4,5,6 or Monday through Friday), casual users drop while member users rise. Opposite to this, during the weekends (1, 7 or Sunday and Saturdays), casual users increase while member users decrease. Thus we can conclude that during the weekdays member use increases but drops during weekends. and casual users increase during the weekends but drops during the weekdays.
+
+### Summary File Creation for Export
+
+##### Now we will create a summary file to export as a csv.
+
+```{r}
+sum_file <- df_combined_clean %>%
+  group_by(usertype, day_of_week) %>%
+  summarise(
+    num_of_rides = n(),
+    avg_ride_length = mean(ride_length_sec)
+  )
+
+write_csv(sum_file, "summary_output.csv")
+
+```
+
